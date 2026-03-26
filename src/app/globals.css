@@ -40,3 +40,60 @@ input {
 ::selection {
   background: rgba(255, 122, 89, 0.25);
 }
+
+.card-motion-gentle-zoom,
+.card-motion-drift,
+.card-motion-float {
+  will-change: transform;
+}
+
+.card-motion-gentle-zoom {
+  animation: card-gentle-zoom 14s ease-in-out infinite alternate;
+}
+
+.card-motion-drift {
+  animation: card-drift 16s ease-in-out infinite alternate;
+}
+
+.card-motion-float {
+  animation: card-float 9s ease-in-out infinite;
+}
+
+@keyframes card-gentle-zoom {
+  from {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+
+  to {
+    transform: scale(1.08) translate3d(0, -1.2%, 0);
+  }
+}
+
+@keyframes card-drift {
+  from {
+    transform: scale(1.04) translate3d(-1.5%, 0.6%, 0);
+  }
+
+  to {
+    transform: scale(1.08) translate3d(1.5%, -0.8%, 0);
+  }
+}
+
+@keyframes card-float {
+  0%,
+  100% {
+    transform: scale(1.02) translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: scale(1.04) translate3d(0, -1.4%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-motion-gentle-zoom,
+  .card-motion-drift,
+  .card-motion-float {
+    animation: none;
+  }
+}

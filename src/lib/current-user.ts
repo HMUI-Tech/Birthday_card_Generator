@@ -38,6 +38,7 @@ export const cardSummarySelect = {
       duration: true,
       placement: true,
       filterStyle: true,
+      motionStyle: true,
       order: true,
       createdAt: true,
     },

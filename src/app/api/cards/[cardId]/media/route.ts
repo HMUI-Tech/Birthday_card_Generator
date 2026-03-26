@@ -92,22 +92,23 @@ async function persistUploadedMedia({
       height: upload.height ?? null,
       duration: upload.duration ?? null,
     },
-    create: {
-      cardId: card.id,
-      publicId: upload.public_id,
-      originalFilename: upload.original_filename ?? null,
-      resourceType: upload.resource_type,
+      create: {
+        cardId: card.id,
+        publicId: upload.public_id,
+        originalFilename: upload.original_filename ?? null,
+        resourceType: upload.resource_type,
       format: upload.format ?? null,
       secureUrl: upload.secure_url,
       bytes: upload.bytes ?? null,
       width: upload.width ?? null,
       height: upload.height ?? null,
-      duration: upload.duration ?? null,
-      placement,
-      filterStyle: "auto",
-      order: nextOrder,
-    },
-  });
+        duration: upload.duration ?? null,
+        placement,
+        filterStyle: "auto",
+        motionStyle: "none",
+        order: nextOrder,
+      },
+    });
 
   const updatedCard = await prisma.card.findUnique({
     where: { id: card.id },

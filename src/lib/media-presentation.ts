@@ -11,6 +11,9 @@ export const filterStyles = [
 ] as const;
 export type FilterStyle = (typeof filterStyles)[number];
 
+export const motionStyles = ["none", "gentle-zoom", "drift", "float"] as const;
+export type MotionStyle = (typeof motionStyles)[number];
+
 export const mediaPlacementOptions = [
   { value: "cover", label: "Front cover" },
   { value: "inside-feature", label: "Inside feature" },
@@ -27,8 +30,16 @@ export const filterStyleOptions = [
   { value: "soft-glow", label: "Soft glow" },
 ] as const satisfies ReadonlyArray<{ value: FilterStyle; label: string }>;
 
+export const motionStyleOptions = [
+  { value: "none", label: "Still" },
+  { value: "gentle-zoom", label: "Gentle zoom" },
+  { value: "drift", label: "Slow drift" },
+  { value: "float", label: "Soft float" },
+] as const satisfies ReadonlyArray<{ value: MotionStyle; label: string }>;
+
 const placementLabels = Object.fromEntries(mediaPlacementOptions.map((item) => [item.value, item.label]));
 const filterLabels = Object.fromEntries(filterStyleOptions.map((item) => [item.value, item.label]));
+const motionLabels = Object.fromEntries(motionStyleOptions.map((item) => [item.value, item.label]));
 
 export function formatMediaPlacementLabel(placement: string) {
   return placementLabels[placement as MediaPlacement] ?? "Inside strip";
@@ -36,6 +47,24 @@ export function formatMediaPlacementLabel(placement: string) {
 
 export function formatFilterStyleLabel(filterStyle: string) {
   return filterLabels[filterStyle as FilterStyle] ?? "AI subtle";
+}
+
+export function formatMotionStyleLabel(motionStyle: string) {
+  return motionLabels[motionStyle as MotionStyle] ?? "Still";
+}
+
+export function getMotionStyleClass(motionStyle: string) {
+  switch (motionStyle) {
+    case "gentle-zoom":
+      return "card-motion-gentle-zoom";
+    case "drift":
+      return "card-motion-drift";
+    case "float":
+      return "card-motion-float";
+    case "none":
+    default:
+      return "";
+  }
 }
 
 export function resolveAutoFilterStyle({

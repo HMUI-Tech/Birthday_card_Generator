@@ -20,14 +20,16 @@ import {
   filterStyleOptions,
   formatFilterStyleLabel,
   formatMediaPlacementLabel,
+  formatMotionStyleLabel,
   mediaPlacementOptions,
+  motionStyleOptions,
 } from "@/lib/media-presentation";
 
 type AuthMode = "login" | "register";
 type SourceKind = "note" | "link" | "instagram" | "facebook" | "pdf";
 type NoticeTone = "neutral" | "error" | "success";
 type FeatureStatus = { cloudinaryConfigured: boolean; openAiConfigured: boolean };
-type MediaSelection = { placement: string; filterStyle: string };
+type MediaSelection = { placement: string; filterStyle: string; motionStyle: string };
 
 type SessionUser = { id: string; email: string; createdAt: string; updatedAt: string };
 type CardMedia = {
@@ -43,6 +45,7 @@ type CardMedia = {
   duration: number | null;
   placement: string;
   filterStyle: string;
+  motionStyle: string;
   order: number;
   createdAt: string;
 };
@@ -123,6 +126,8 @@ function renderMediaTile(item: CardMedia, compact = false) {
         <p className="truncate">{item.originalFilename || item.publicId}</p>
         <p className="mt-1 uppercase tracking-[0.2em] text-rose-700">
           {formatMediaPlacementLabel(item.placement)} • {formatFilterStyleLabel(item.filterStyle)}
+          {" • "}
+          {formatMotionStyleLabel(item.motionStyle)}
         </p>
       </div>
     </div>
@@ -132,7 +137,14 @@ function renderMediaTile(item: CardMedia, compact = false) {
 function buildMediaSelectionMap(cards: CardSummary[]) {
   return Object.fromEntries(
     cards.flatMap((card) =>
-      card.media.map((item) => [item.id, { placement: item.placement, filterStyle: item.filterStyle }]),
+      card.media.map((item) => [
+        item.id,
+        {
+          placement: item.placement,
+          filterStyle: item.filterStyle,
+          motionStyle: item.motionStyle,
+        },
+      ]),
     ),
   ) as Record<string, MediaSelection>;
 }
@@ -349,7 +361,7 @@ export function WorkspacePanel() {
   async function handleUpdateMedia(
     cardId: string,
     mediaId: string,
-    payload: { placement: string; filterStyle: string },
+    payload: { placement: string; filterStyle: string; motionStyle: string },
   ) {
     setSavingMediaId(mediaId);
     try {
@@ -379,14 +391,15 @@ export function WorkspacePanel() {
     value: string,
     fallback: MediaSelection,
   ) {
-    setMediaSelections((current) => ({
-      ...current,
-      [mediaId]: {
-        placement: current[mediaId]?.placement ?? fallback.placement,
-        filterStyle: current[mediaId]?.filterStyle ?? fallback.filterStyle,
-        [field]: value,
-      },
-    }));
+      setMediaSelections((current) => ({
+        ...current,
+        [mediaId]: {
+          placement: current[mediaId]?.placement ?? fallback.placement,
+          filterStyle: current[mediaId]?.filterStyle ?? fallback.filterStyle,
+          motionStyle: current[mediaId]?.motionStyle ?? fallback.motionStyle,
+          [field]: value,
+        },
+      }));
   }
 
   async function handleDeleteMedia(cardId: string, mediaId: string) {
@@ -1081,10 +1094,12 @@ export function WorkspacePanel() {
                 const mediaSelection = mediaSelections[item.id] ?? {
                   placement: item.placement,
                   filterStyle: item.filterStyle,
+                  motionStyle: item.motionStyle,
                 };
                 const hasMediaChanges =
                   mediaSelection.placement !== item.placement ||
-                  mediaSelection.filterStyle !== item.filterStyle;
+                  mediaSelection.filterStyle !== item.filterStyle ||
+                  mediaSelection.motionStyle !== item.motionStyle;
 
                 return (
                   <div key={item.id} className="space-y-3">
@@ -1100,6 +1115,7 @@ export function WorkspacePanel() {
                             handleMediaSelectionChange(item.id, "placement", event.target.value, {
                               placement: item.placement,
                               filterStyle: item.filterStyle,
+                              motionStyle: item.motionStyle,
                             })
                           }
                         >
@@ -1121,10 +1137,33 @@ export function WorkspacePanel() {
                             handleMediaSelectionChange(item.id, "filterStyle", event.target.value, {
                               placement: item.placement,
                               filterStyle: item.filterStyle,
+                              motionStyle: item.motionStyle,
                             })
                           }
                         >
                           {filterStyleOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-stone-800">Motion</span>
+                        <select
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                          name="motionStyle"
+                          value={mediaSelection.motionStyle}
+                          onChange={(event) =>
+                            handleMediaSelectionChange(item.id, "motionStyle", event.target.value, {
+                              placement: item.placement,
+                              filterStyle: item.filterStyle,
+                              motionStyle: item.motionStyle,
+                            })
+                          }
+                        >
+                          {motionStyleOptions.map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>

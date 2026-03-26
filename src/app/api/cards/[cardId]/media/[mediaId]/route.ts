@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { cardSummarySelect, getSessionUser } from "@/lib/current-user";
-import { filterStyles, mediaPlacements } from "@/lib/media-presentation";
+import { filterStyles, mediaPlacements, motionStyles } from "@/lib/media-presentation";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -11,8 +11,9 @@ const updateMediaSchema = z
   .object({
     placement: z.enum(mediaPlacements).optional(),
     filterStyle: z.enum(filterStyles).optional(),
+    motionStyle: z.enum(motionStyles).optional(),
   })
-  .refine((value) => value.placement || value.filterStyle, {
+  .refine((value) => value.placement || value.filterStyle || value.motionStyle, {
     message: "Provide at least one media setting to update",
   });
 
@@ -54,6 +55,7 @@ export async function PATCH(
       data: {
         placement: payload.placement,
         filterStyle: payload.filterStyle,
+        motionStyle: payload.motionStyle,
       },
     });
 

@@ -47,6 +47,7 @@ model Media {
   duration         Float?
   placement        String  @default("inside-strip")
   filterStyle      String  @default("auto")
+  motionStyle      String  @default("none")
   order            Int     @default(0)
   card             Card    @relation(fields: [cardId], references: [id], onDelete: Cascade)
   cardId           String

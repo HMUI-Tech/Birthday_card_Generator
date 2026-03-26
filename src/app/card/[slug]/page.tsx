@@ -4,19 +4,11 @@ import { notFound } from "next/navigation";
 import { buildCloudinaryDeliveryUrl, isCloudinaryConfigured } from "@/lib/cloudinary";
 import {
   buildBackNotePlaceholder,
-  buildCardCopyStateDescription,
   buildFallbackCoverLine,
   buildFallbackInsideMessage,
-  formatCardCopyStateLabel,
-  formatOccasionLabel,
-  formatThemeLabel,
-  getCardCopyState,
   getCardDesign,
 } from "@/lib/card-design";
-import {
-  formatFilterStyleLabel,
-  formatMediaPlacementLabel,
-} from "@/lib/media-presentation";
+import { getMotionStyleClass } from "@/lib/media-presentation";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +44,7 @@ export default async function PublicCardPage({
           duration: true,
           placement: true,
           filterStyle: true,
+          motionStyle: true,
         },
       },
     },
@@ -77,12 +70,6 @@ export default async function PublicCardPage({
       relationship: card.relationship,
     });
   const backNote = card.personalizedText || buildBackNotePlaceholder(card.recipientName);
-  const copyState = getCardCopyState({
-    title: card.title,
-    insideMessage: card.insideMessage,
-  });
-  const copyStateLabel = formatCardCopyStateLabel(copyState);
-  const copyStateDescription = buildCardCopyStateDescription(copyState);
   const coverMedia = card.media.find((item) => item.placement === "cover") ?? null;
   const insideFeatureMedia = card.media.find((item) => item.placement === "inside-feature") ?? null;
   const backAccentMedia = card.media.find((item) => item.placement === "back-accent") ?? null;
@@ -95,40 +82,7 @@ export default async function PublicCardPage({
 
   return (
     <main className={`min-h-screen px-6 py-10 text-stone-900 md:px-10 ${design.pageBackgroundClass}`}>
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.32em] text-rose-700">
-              Shareable card
-            </p>
-            <h1 className="mt-4 text-4xl font-semibold tracking-tight text-stone-950 md:text-6xl">
-              {coverLine}
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-stone-700 md:text-lg">
-              {copyState === "generated"
-                ? `A ${formatOccasionLabel(card.occasion).toLowerCase()} card with an AI-written cover and inside message, plus a private note on the back.`
-                : `A ${formatOccasionLabel(card.occasion).toLowerCase()} card currently showing starter text from the brief until the AI cover and inside message are generated.`}
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <span className="rounded-full bg-white/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-700 shadow-sm">
-              {formatOccasionLabel(card.occasion)}
-            </span>
-            <span className="rounded-full bg-white/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-700 shadow-sm">
-              {formatThemeLabel(card.theme)}
-            </span>
-            <span className="rounded-full bg-white/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-700 shadow-sm">
-              {copyStateLabel}
-            </span>
-            {card.relationship ? (
-              <span className="rounded-full bg-white/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-700 shadow-sm">
-                {card.relationship}
-              </span>
-            ) : null}
-          </div>
-        </header>
-
+      <div className="mx-auto max-w-6xl">
         <section className={`rounded-[2.75rem] p-5 md:p-6 ${design.frameClass}`}>
           <div className="grid gap-5 xl:grid-cols-[0.92fr_1.08fr]">
             <section
@@ -141,20 +95,10 @@ export default async function PublicCardPage({
                 className={`absolute bottom-10 right-10 h-20 w-20 rounded-full border border-white/20 ${design.accentClass}`}
               />
               <div className="relative flex h-full flex-col justify-between">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.34em]">
-                      {design.coverEyebrow}
-                    </p>
-                    <p className={`mt-3 text-sm ${design.metaClass}`}>
-                      {formatOccasionLabel(card.occasion)} card
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] ${design.badgeClass}`}
-                  >
-                    Front cover
-                  </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.34em]">
+                    {design.coverEyebrow}
+                  </p>
                 </div>
 
                 <div className="mt-16">
@@ -189,7 +133,7 @@ export default async function PublicCardPage({
                         />
                       ) : (
                         <img
-                          className="aspect-[4/5] w-full object-cover"
+                          className={`aspect-[4/5] w-full object-cover ${getMotionStyleClass(coverMedia.motionStyle)}`}
                           src={
                             cloudinaryReady
                               ? buildCloudinaryDeliveryUrl({
@@ -205,55 +149,27 @@ export default async function PublicCardPage({
                           alt={coverMedia.originalFilename || "Cover memory"}
                         />
                       )}
-                      <div className="px-4 py-3 text-xs uppercase tracking-[0.22em] text-white/80">
-                        {formatMediaPlacementLabel(coverMedia.placement)} •{" "}
-                        {formatFilterStyleLabel(coverMedia.filterStyle)}
-                      </div>
                     </div>
                   ) : null}
-                  {card.relationship ? (
-                    <p className={`text-sm ${design.mutedClass}`}>{card.relationship}</p>
-                  ) : null}
-                  <p className={`max-w-sm text-sm leading-6 ${design.mutedClass}`}>
-                    {design.coverPrompt}
-                  </p>
                 </div>
               </div>
             </section>
 
             <div className="grid gap-5">
               <section className={`rounded-[2.35rem] p-8 md:p-10 ${design.insidePanelClass}`}>
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-rose-700">
-                      {design.insideEyebrow}
-                    </p>
-                    <p className="mt-3 text-sm text-stone-500">
-                      {copyState === "generated"
-                        ? "The main message the recipient reads when the card opens."
-                        : "Starter text from the card brief. Generate the inside message in the workspace to replace it."}
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-white/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-600">
-                    Inside
-                  </span>
-                </div>
-
-                <div className="mt-6 rounded-[1.5rem] border border-stone-200/80 bg-white/75 px-5 py-4 text-sm leading-6 text-stone-600">
-                  {copyStateDescription}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.32em] text-rose-700">
+                    {design.insideEyebrow}
+                  </p>
                 </div>
 
                 <p className="mt-6 whitespace-pre-line text-base leading-8 text-stone-700 md:text-lg">
                   {insideMessage}
                 </p>
 
-                <div className="mt-8">
-                  <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
-                    Card images and clips
-                  </p>
-
+                <div className="mt-8 space-y-4">
                   {insideFeatureMedia ? (
-                    <article className="mt-4 overflow-hidden rounded-[1.9rem] border border-stone-200 bg-white shadow-sm">
+                    <article className="overflow-hidden rounded-[1.9rem] border border-stone-200 bg-white shadow-sm">
                       {insideFeatureMedia.resourceType === "video" ? (
                         <video
                           className="aspect-[16/10] w-full bg-stone-950 object-cover"
@@ -274,7 +190,7 @@ export default async function PublicCardPage({
                         />
                       ) : (
                         <img
-                          className="aspect-[16/10] w-full bg-stone-100 object-cover"
+                          className={`aspect-[16/10] w-full bg-stone-100 object-cover ${getMotionStyleClass(insideFeatureMedia.motionStyle)}`}
                           src={
                             cloudinaryReady
                               ? buildCloudinaryDeliveryUrl({
@@ -290,22 +206,11 @@ export default async function PublicCardPage({
                           alt={insideFeatureMedia.originalFilename || "Inside feature"}
                         />
                       )}
-                      <div className="px-5 py-4 text-sm text-stone-600">
-                        <p>{insideFeatureMedia.originalFilename || insideFeatureMedia.publicId}</p>
-                        <p className="mt-1 uppercase tracking-[0.2em] text-rose-700">
-                          {formatMediaPlacementLabel(insideFeatureMedia.placement)} •{" "}
-                          {formatFilterStyleLabel(insideFeatureMedia.filterStyle)}
-                        </p>
-                      </div>
                     </article>
                   ) : null}
 
-                  {card.media.length === 0 ? (
-                    <div className="mt-4 rounded-[1.75rem] border border-dashed border-stone-300 bg-white/70 px-5 py-8 text-sm leading-6 text-stone-500">
-                      No pictures, GIFs, or video memories were attached to this card yet.
-                    </div>
-                  ) : insideStripMedia.length > 0 ? (
-                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  {insideStripMedia.length > 0 ? (
+                    <div className="grid gap-4 md:grid-cols-2">
                       {insideStripMedia.map((item) => {
                         const src =
                           cloudinaryReady &&
@@ -334,44 +239,24 @@ export default async function PublicCardPage({
                               />
                             ) : (
                               <img
-                                className="aspect-[4/3] w-full bg-stone-100 object-cover"
+                                className={`aspect-[4/3] w-full bg-stone-100 object-cover ${getMotionStyleClass(item.motionStyle)}`}
                                 src={src}
                                 alt={item.originalFilename || "Card memory"}
                               />
                             )}
-
-                            <div className="px-5 py-4 text-sm text-stone-600">
-                              <p>{item.originalFilename || item.publicId}</p>
-                              <p className="mt-1 uppercase tracking-[0.2em] text-rose-700">
-                                {formatMediaPlacementLabel(item.placement)} •{" "}
-                                {formatFilterStyleLabel(item.filterStyle)}
-                              </p>
-                            </div>
                           </article>
                         );
                       })}
                     </div>
-                  ) : (
-                    <div className="mt-4 rounded-[1.75rem] border border-dashed border-stone-300 bg-white/70 px-5 py-8 text-sm leading-6 text-stone-500">
-                      The chosen media is already being used on the cover, inside feature, or back.
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               </section>
 
               <section className={`rounded-[2.35rem] p-8 md:p-10 ${design.backPanelClass}`}>
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.32em] text-stone-500">
-                      {design.backEyebrow}
-                    </p>
-                    <p className="mt-3 text-sm text-stone-500">
-                      The private note added by the sender and kept separate from the AI copy.
-                    </p>
-                  </div>
-                  <span className="rounded-full bg-white/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-600">
-                    Back
-                  </span>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.32em] text-stone-500">
+                    {design.backEyebrow}
+                  </p>
                 </div>
 
                 {backAccentMedia ? (
@@ -396,7 +281,7 @@ export default async function PublicCardPage({
                       />
                     ) : (
                       <img
-                        className="aspect-[4/3] w-full bg-stone-100 object-cover"
+                        className={`aspect-[4/3] w-full bg-stone-100 object-cover ${getMotionStyleClass(backAccentMedia.motionStyle)}`}
                         src={
                           cloudinaryReady
                             ? buildCloudinaryDeliveryUrl({
@@ -409,16 +294,9 @@ export default async function PublicCardPage({
                               })
                             : backAccentMedia.secureUrl
                         }
-                        alt={backAccentMedia.originalFilename || "Back accent"}
-                      />
-                    )}
-                    <div className="px-5 py-4 text-sm text-stone-600">
-                      <p>{backAccentMedia.originalFilename || backAccentMedia.publicId}</p>
-                      <p className="mt-1 uppercase tracking-[0.2em] text-rose-700">
-                        {formatMediaPlacementLabel(backAccentMedia.placement)} •{" "}
-                        {formatFilterStyleLabel(backAccentMedia.filterStyle)}
-                      </p>
-                    </div>
+                          alt={backAccentMedia.originalFilename || "Back accent"}
+                        />
+                      )}
                   </div>
                 ) : null}
 
