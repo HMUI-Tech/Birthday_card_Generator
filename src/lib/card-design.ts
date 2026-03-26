@@ -212,6 +212,13 @@ type CardToneInput = {
   relationship?: string | null;
 };
 
+type CardCopyInput = {
+  title?: string | null;
+  insideMessage?: string | null;
+};
+
+export type CardCopyState = "starter" | "partial" | "generated";
+
 export function formatOccasionLabel(occasion: string) {
   return occasionLabels[occasion as keyof typeof occasionLabels] ?? "Celebration";
 }
@@ -226,6 +233,45 @@ export function getCardDesign(occasion: string, theme: string) {
   }
 
   return designs[occasion] ?? designs.default;
+}
+
+export function getCardCopyState({ title, insideMessage }: CardCopyInput): CardCopyState {
+  const hasTitle = Boolean(title?.trim());
+  const hasInsideMessage = Boolean(insideMessage?.trim());
+
+  if (hasTitle && hasInsideMessage) {
+    return "generated";
+  }
+
+  if (hasTitle || hasInsideMessage) {
+    return "partial";
+  }
+
+  return "starter";
+}
+
+export function formatCardCopyStateLabel(state: CardCopyState) {
+  switch (state) {
+    case "generated":
+      return "AI copy ready";
+    case "partial":
+      return "Partial AI copy";
+    case "starter":
+    default:
+      return "Starter copy only";
+  }
+}
+
+export function buildCardCopyStateDescription(state: CardCopyState) {
+  switch (state) {
+    case "generated":
+      return "The current front cover and inside message were generated and saved for this card.";
+    case "partial":
+      return "Part of this card has been regenerated, but one section is still showing starter text from the brief.";
+    case "starter":
+    default:
+      return "This card is still showing starter text from the brief. Generate the cover and inside to replace it with personalized copy.";
+  }
 }
 
 export function buildFallbackCoverLine({ recipientName, occasion }: CardToneInput) {

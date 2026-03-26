@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
-const sourceKinds = ["note", "link", "instagram", "pdf"] as const;
+const sourceKinds = ["note", "link", "instagram", "facebook", "pdf"] as const;
 
 const sourceSchema = z.object({
   kind: z.enum(sourceKinds),
@@ -58,7 +58,10 @@ export async function POST(
       );
     }
 
-    if ((parsed.kind === "link" || parsed.kind === "instagram") && !parsed.url) {
+    if (
+      (parsed.kind === "link" || parsed.kind === "instagram" || parsed.kind === "facebook") &&
+      !parsed.url
+    ) {
       return NextResponse.json(
         { message: "A link source needs a URL" },
         { status: 400 },

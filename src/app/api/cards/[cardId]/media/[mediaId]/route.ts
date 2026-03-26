@@ -82,3 +82,54 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ cardId: string; mediaId: string }> },
+) {
+  try {
+    const user = await getSessionUser(request);
+
+    if (!user) {
+      return NextResponse.json({ message: "Not signed in" }, { status: 401 });
+    }
+
+    const { cardId, mediaId } = await params;
+
+    const media = await prisma.media.findFirst({
+      where: {
+        id: mediaId,
+        cardId,
+        card: {
+          userId: user.id,
+        },
+      },
+      select: {
+        id: true,
+        cardId: true,
+      },
+    });
+
+    if (!media) {
+      return NextResponse.json({ message: "Media not found" }, { status: 404 });
+    }
+
+    await prisma.media.delete({
+      where: { id: media.id },
+    });
+
+    const updatedCard = await prisma.card.findUnique({
+      where: { id: media.cardId },
+      select: cardSummarySelect,
+    });
+
+    return NextResponse.json({ card: updatedCard }, { status: 200 });
+  } catch (error) {
+    console.error("Media delete error", error);
+
+    return NextResponse.json(
+      { message: "Unable to delete media right now" },
+      { status: 500 },
+    );
+  }
+}

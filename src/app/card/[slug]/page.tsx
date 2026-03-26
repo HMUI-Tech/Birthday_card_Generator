@@ -4,10 +4,13 @@ import { notFound } from "next/navigation";
 import { buildCloudinaryDeliveryUrl, isCloudinaryConfigured } from "@/lib/cloudinary";
 import {
   buildBackNotePlaceholder,
+  buildCardCopyStateDescription,
   buildFallbackCoverLine,
   buildFallbackInsideMessage,
+  formatCardCopyStateLabel,
   formatOccasionLabel,
   formatThemeLabel,
+  getCardCopyState,
   getCardDesign,
 } from "@/lib/card-design";
 import {
@@ -74,6 +77,12 @@ export default async function PublicCardPage({
       relationship: card.relationship,
     });
   const backNote = card.personalizedText || buildBackNotePlaceholder(card.recipientName);
+  const copyState = getCardCopyState({
+    title: card.title,
+    insideMessage: card.insideMessage,
+  });
+  const copyStateLabel = formatCardCopyStateLabel(copyState);
+  const copyStateDescription = buildCardCopyStateDescription(copyState);
   const coverMedia = card.media.find((item) => item.placement === "cover") ?? null;
   const insideFeatureMedia = card.media.find((item) => item.placement === "inside-feature") ?? null;
   const backAccentMedia = card.media.find((item) => item.placement === "back-accent") ?? null;
@@ -96,8 +105,9 @@ export default async function PublicCardPage({
               {coverLine}
             </h1>
             <p className="mt-4 max-w-2xl text-base leading-7 text-stone-700 md:text-lg">
-              A {formatOccasionLabel(card.occasion).toLowerCase()} card with an AI-written cover
-              and inside message, plus a private note on the back.
+              {copyState === "generated"
+                ? `A ${formatOccasionLabel(card.occasion).toLowerCase()} card with an AI-written cover and inside message, plus a private note on the back.`
+                : `A ${formatOccasionLabel(card.occasion).toLowerCase()} card currently showing starter text from the brief until the AI cover and inside message are generated.`}
             </p>
           </div>
 
@@ -107,6 +117,9 @@ export default async function PublicCardPage({
             </span>
             <span className="rounded-full bg-white/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-700 shadow-sm">
               {formatThemeLabel(card.theme)}
+            </span>
+            <span className="rounded-full bg-white/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-700 shadow-sm">
+              {copyStateLabel}
             </span>
             {card.relationship ? (
               <span className="rounded-full bg-white/75 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-stone-700 shadow-sm">
@@ -216,12 +229,18 @@ export default async function PublicCardPage({
                       {design.insideEyebrow}
                     </p>
                     <p className="mt-3 text-sm text-stone-500">
-                      The main message the recipient reads when the card opens.
+                      {copyState === "generated"
+                        ? "The main message the recipient reads when the card opens."
+                        : "Starter text from the card brief. Generate the inside message in the workspace to replace it."}
                     </p>
                   </div>
                   <span className="rounded-full bg-white/80 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-600">
                     Inside
                   </span>
+                </div>
+
+                <div className="mt-6 rounded-[1.5rem] border border-stone-200/80 bg-white/75 px-5 py-4 text-sm leading-6 text-stone-600">
+                  {copyStateDescription}
                 </div>
 
                 <p className="mt-6 whitespace-pre-line text-base leading-8 text-stone-700 md:text-lg">

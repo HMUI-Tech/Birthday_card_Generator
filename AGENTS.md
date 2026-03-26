@@ -22,3 +22,14 @@ Always do all of the following before handing the app back:
 
 Reason:
 - A stale `next dev` process can keep an outdated Prisma runtime in memory and cause recurring `Unknown field ... for select statement on model Card` errors even when the schema, generated client, and production build are correct.
+
+# Card Copy Guardrails
+
+Do not describe fallback or placeholder card text as AI-generated.
+
+If a card has no saved `title` or no saved `insideMessage`:
+
+1. Label the current text as starter or placeholder copy from the brief
+2. Tell the user generation has not completed for that section yet
+3. Make sure the workspace lets the user correct the card brief on an existing draft
+4. If the recipient, occasion, or relationship changes, clear stale generated copy rather than leaving mismatched text on the card

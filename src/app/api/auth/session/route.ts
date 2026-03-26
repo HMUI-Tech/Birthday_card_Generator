@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { clearSessionCookie } from "@/lib/auth";
+import { isCloudinaryConfigured } from "@/lib/cloudinary";
 import { cardSummarySelect, getSessionUser } from "@/lib/current-user";
+import { isOpenAIConfigured } from "@/lib/openai";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
@@ -20,7 +22,17 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ user, cards }, { status: 200 });
+    return NextResponse.json(
+      {
+        user,
+        cards,
+        features: {
+          cloudinaryConfigured: isCloudinaryConfigured(),
+          openAiConfigured: isOpenAIConfigured(),
+        },
+      },
+      { status: 200 },
+    );
   } catch (error) {
     console.error("Session error", error);
 

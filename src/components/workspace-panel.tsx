@@ -5,10 +5,13 @@ import { useEffect, useState, useTransition } from "react";
 
 import {
   buildBackNotePlaceholder,
+  buildCardCopyStateDescription,
   buildFallbackCoverLine,
   buildFallbackInsideMessage,
+  formatCardCopyStateLabel,
   formatOccasionLabel,
   formatThemeLabel,
+  getCardCopyState,
   getCardDesign,
   occasionOptions,
   themeOptions,
@@ -21,8 +24,10 @@ import {
 } from "@/lib/media-presentation";
 
 type AuthMode = "login" | "register";
-type SourceKind = "note" | "link" | "instagram" | "pdf";
+type SourceKind = "note" | "link" | "instagram" | "facebook" | "pdf";
 type NoticeTone = "neutral" | "error" | "success";
+type FeatureStatus = { cloudinaryConfigured: boolean; openAiConfigured: boolean };
+type MediaSelection = { placement: string; filterStyle: string };
 
 type SessionUser = { id: string; email: string; createdAt: string; updatedAt: string };
 type CardMedia = {
@@ -67,12 +72,13 @@ type CardSummary = {
   updatedAt: string;
   _count: { media: number; sources: number };
 };
-type SessionPayload = { user: SessionUser; cards: CardSummary[] };
+type SessionPayload = { user: SessionUser; cards: CardSummary[]; features: FeatureStatus };
 
 const sourceKinds: Array<{ value: SourceKind; label: string }> = [
   { value: "note", label: "Memory note" },
   { value: "link", label: "Reference link" },
   { value: "instagram", label: "Instagram URL" },
+  { value: "facebook", label: "Facebook link" },
   { value: "pdf", label: "PDF" },
 ];
 
@@ -81,6 +87,8 @@ const sourceHints: Record<SourceKind, string> = {
   link: "Paste any useful URL and explain what the AI should take from it.",
   instagram:
     "Paste the Instagram URL and add your own summary. The app stores the URL as a reference.",
+  facebook:
+    "Paste the Facebook URL and add your own summary. The app stores the link as a reference rather than scraping it.",
   pdf: "Upload a PDF the AI should read for context before rewriting the cover and inside.",
 };
 
@@ -121,6 +129,14 @@ function renderMediaTile(item: CardMedia, compact = false) {
   );
 }
 
+function buildMediaSelectionMap(cards: CardSummary[]) {
+  return Object.fromEntries(
+    cards.flatMap((card) =>
+      card.media.map((item) => [item.id, { placement: item.placement, filterStyle: item.filterStyle }]),
+    ),
+  ) as Record<string, MediaSelection>;
+}
+
 export function WorkspacePanel() {
   const [mode, setMode] = useState<AuthMode>("register");
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -130,11 +146,19 @@ export function WorkspacePanel() {
     tone: "neutral",
     message: "Create an account or sign in to build an AI-generated card.",
   });
+  const [features, setFeatures] = useState<FeatureStatus>({
+    cloudinaryConfigured: false,
+    openAiConfigured: false,
+  });
   const [isPending, startTransition] = useTransition();
   const [uploadingCardId, setUploadingCardId] = useState<string | null>(null);
   const [busyCardId, setBusyCardId] = useState<string | null>(null);
   const [savingMediaId, setSavingMediaId] = useState<string | null>(null);
+  const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null);
+  const [savingCardId, setSavingCardId] = useState<string | null>(null);
+  const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
   const [sourceModes, setSourceModes] = useState<Record<string, SourceKind>>({});
+  const [mediaSelections, setMediaSelections] = useState<Record<string, MediaSelection>>({});
 
   useEffect(() => {
     void loadSession();
@@ -147,6 +171,8 @@ export function WorkspacePanel() {
       if (response.status === 401) {
         setUser(null);
         setCards([]);
+        setFeatures({ cloudinaryConfigured: false, openAiConfigured: false });
+        setMediaSelections({});
         return { ok: false as const, reason: "unauthorized" as const };
       }
       if (!response.ok) {
@@ -157,6 +183,8 @@ export function WorkspacePanel() {
       const data = (await response.json()) as SessionPayload;
       setUser(data.user);
       setCards(data.cards);
+      setFeatures(data.features);
+      setMediaSelections(buildMediaSelectionMap(data.cards));
       setNotice({
         tone: "success",
         message: `Signed in as ${data.user.email}. Front cover and inside copy can now be generated from your card briefs.`,
@@ -168,9 +196,11 @@ export function WorkspacePanel() {
   }
 
   function updateCard(nextCard: CardSummary) {
-    setCards((currentCards) =>
-      currentCards.map((card) => (card.id === nextCard.id ? nextCard : card)),
-    );
+    setCards((currentCards) => {
+      const updatedCards = currentCards.map((card) => (card.id === nextCard.id ? nextCard : card));
+      setMediaSelections(buildMediaSelectionMap(updatedCards));
+      return updatedCards;
+    });
   }
 
   async function handleAuthSubmit(formData: FormData) {
@@ -222,12 +252,52 @@ export function WorkspacePanel() {
       setNotice({ tone: "error", message: data.message ?? "Card creation failed." });
       return;
     }
-    setCards((currentCards) => [data, ...currentCards]);
+    setCards((currentCards) => {
+      const updatedCards = [data, ...currentCards];
+      setMediaSelections(buildMediaSelectionMap(updatedCards));
+      return updatedCards;
+    });
     setSourceModes((current) => ({ ...current, [data.id]: "note" }));
     setNotice({
       tone: "success",
-      message: `Draft created for ${data.recipientName ?? "your recipient"}. Generate the cover and inside message when you are ready.`,
+      message: `Draft created for ${data.recipientName ?? "your recipient"}. It is showing starter copy until you generate the cover and inside message.`,
     });
+  }
+
+  async function handleUpdateCard(cardId: string, formData: FormData) {
+    setSavingCardId(cardId);
+    try {
+      const payload = {
+        recipientName: String(formData.get("recipientName") ?? ""),
+        occasion: String(formData.get("occasion") ?? "birthday"),
+        relationship: String(formData.get("relationship") ?? ""),
+        personalNote: String(formData.get("personalNote") ?? ""),
+        theme: String(formData.get("theme") ?? "default"),
+      };
+      const response = await fetch(`/api/cards/${cardId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = (await response.json()) as {
+        card?: CardSummary;
+        generationReset?: boolean;
+        message?: string;
+      };
+      if (!response.ok || !data.card) {
+        setNotice({ tone: "error", message: data.message ?? "Unable to update the card brief." });
+        return;
+      }
+      updateCard(data.card);
+      setNotice({
+        tone: "success",
+        message: data.generationReset
+          ? "Card brief updated. The old AI copy was cleared because the recipient or occasion changed. Generate again for fresh wording."
+          : "Card brief updated.",
+      });
+    } finally {
+      setSavingCardId(null);
+    }
   }
 
   async function handleUploadMedia(cardId: string, files: FileList | null) {
@@ -235,56 +305,44 @@ export function WorkspacePanel() {
     if (!file) return;
     setUploadingCardId(cardId);
     try {
-      const signResponse = await fetch(`/api/cards/${cardId}/media/sign`, { method: "POST" });
-      const signData = (await signResponse.json()) as {
-        apiKey?: string;
-        folder?: string;
-        timestamp?: number;
-        signature?: string;
-        uploadUrl?: string;
-        message?: string;
-      };
-      if (!signResponse.ok || !signData.uploadUrl) {
-        setNotice({
-          tone: "error",
-          message: signData.message ?? "Cloudinary is not configured yet.",
-        });
-        return;
-      }
       const uploadFormData = new FormData();
       uploadFormData.set("file", file);
-      uploadFormData.set("api_key", String(signData.apiKey));
-      uploadFormData.set("timestamp", String(signData.timestamp));
-      uploadFormData.set("signature", String(signData.signature));
-      uploadFormData.set("folder", String(signData.folder));
-      const uploadResponse = await fetch(signData.uploadUrl, {
+      const uploadResponse = await fetch(`/api/cards/${cardId}/media`, {
         method: "POST",
         body: uploadFormData,
       });
-      const uploadData = (await uploadResponse.json()) as Record<string, unknown> & {
+      const uploadData = (await uploadResponse.json()) as CardSummary & {
         message?: string;
       };
       if (!uploadResponse.ok) {
         setNotice({
           tone: "error",
-          message: uploadData.message?.toString() ?? "Upload failed.",
+          message: uploadData.message ?? "Upload failed.",
         });
         return;
       }
-      const saveResponse = await fetch(`/api/cards/${cardId}/media`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(uploadData),
-      });
-      const savedCard = (await saveResponse.json()) as CardSummary & { message?: string };
-      if (!saveResponse.ok) {
-        setNotice({ tone: "error", message: savedCard.message ?? "Saving media failed." });
-        return;
-      }
-      updateCard(savedCard);
+      updateCard(uploadData);
       setNotice({ tone: "success", message: `Uploaded "${file.name}".` });
     } finally {
       setUploadingCardId(null);
+    }
+  }
+
+  async function handleDeleteSource(cardId: string, sourceId: string) {
+    setDeletingSourceId(sourceId);
+    try {
+      const response = await fetch(`/api/cards/${cardId}/sources/${sourceId}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { card?: CardSummary; message?: string };
+      if (!response.ok || !data.card) {
+        setNotice({ tone: "error", message: data.message ?? "Unable to delete this source." });
+        return;
+      }
+      updateCard(data.card);
+      setNotice({ tone: "success", message: "Source deleted." });
+    } finally {
+      setDeletingSourceId(null);
     }
   }
 
@@ -315,10 +373,45 @@ export function WorkspacePanel() {
     }
   }
 
+  function handleMediaSelectionChange(
+    mediaId: string,
+    field: keyof MediaSelection,
+    value: string,
+    fallback: MediaSelection,
+  ) {
+    setMediaSelections((current) => ({
+      ...current,
+      [mediaId]: {
+        placement: current[mediaId]?.placement ?? fallback.placement,
+        filterStyle: current[mediaId]?.filterStyle ?? fallback.filterStyle,
+        [field]: value,
+      },
+    }));
+  }
+
+  async function handleDeleteMedia(cardId: string, mediaId: string) {
+    setDeletingMediaId(mediaId);
+    try {
+      const response = await fetch(`/api/cards/${cardId}/media/${mediaId}`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { card?: CardSummary; message?: string };
+      if (!response.ok || !data.card) {
+        setNotice({ tone: "error", message: data.message ?? "Unable to delete this media." });
+        return;
+      }
+      updateCard(data.card);
+      setNotice({ tone: "success", message: "Media deleted from the card." });
+    } finally {
+      setDeletingMediaId(null);
+    }
+  }
+
   async function handleAddSource(cardId: string, formData: FormData) {
     setBusyCardId(cardId);
     try {
-      formData.set("kind", sourceModes[cardId] ?? "note");
+      const sourceKind = sourceModes[cardId] ?? "note";
+      formData.set("kind", sourceKind);
       const response = await fetch(`/api/cards/${cardId}/sources`, {
         method: "POST",
         body: formData,
@@ -329,7 +422,19 @@ export function WorkspacePanel() {
         return;
       }
       updateCard(data.card);
-      setNotice({ tone: "success", message: "Source saved for the next AI pass." });
+      setNotice({
+        tone: "success",
+        message:
+          sourceKind === "facebook"
+            ? "Facebook link saved for the next AI pass."
+            : sourceKind === "instagram"
+              ? "Instagram link saved for the next AI pass."
+              : sourceKind === "link"
+                ? "Reference link saved for the next AI pass."
+                : sourceKind === "pdf"
+                  ? "PDF saved for the next AI pass."
+                  : "Memory note saved for the next AI pass.",
+      });
     } finally {
       setBusyCardId(null);
     }
@@ -373,6 +478,8 @@ export function WorkspacePanel() {
     }
     setUser(null);
     setCards([]);
+    setFeatures({ cloudinaryConfigured: false, openAiConfigured: false });
+    setMediaSelections({});
     setSourceModes({});
     setNotice({ tone: "neutral", message: "Signed out." });
   }
@@ -416,7 +523,13 @@ export function WorkspacePanel() {
         item.id !== backAccentMedia?.id,
     );
     const previewMedia = insideStripMedia.slice(0, 2);
-    const hasGeneratedDraft = Boolean(card.title?.trim() || card.insideMessage?.trim());
+    const copyState = getCardCopyState({
+      title: card.title,
+      insideMessage: card.insideMessage,
+    });
+    const hasGeneratedDraft = copyState !== "starter";
+    const copyStateLabel = formatCardCopyStateLabel(copyState);
+    const copyStateDescription = buildCardCopyStateDescription(copyState);
 
     return (
       <article
@@ -432,8 +545,9 @@ export function WorkspacePanel() {
               {card.recipientName ? `For ${card.recipientName}` : "For your recipient"}
             </h4>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
-              The AI writes the personalized card, while each uploaded photo can be placed on the
-              cover, inside, or back and given a light style treatment.
+              The card brief sets the tone first. AI-generated copy replaces the starter text only
+              after you run generation, while each uploaded photo can be placed on the cover,
+              inside, or back and given a light style treatment.
             </p>
           </div>
 
@@ -478,7 +592,7 @@ export function WorkspacePanel() {
                     <span
                       className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] ${design.badgeClass}`}
                     >
-                      {hasGeneratedDraft ? "AI draft ready" : "Draft brief only"}
+                      {copyStateLabel}
                     </span>
                   </div>
 
@@ -524,6 +638,10 @@ export function WorkspacePanel() {
                   <p className="mt-5 whitespace-pre-line text-sm leading-7 text-stone-700">
                     {insideMessage}
                   </p>
+
+                  <div className="mt-4 rounded-[1.5rem] border border-stone-200/80 bg-white/70 px-4 py-3 text-sm leading-6 text-stone-600">
+                    {copyStateDescription}
+                  </div>
 
                   <div className="mt-5">
                     <p className="text-xs font-semibold uppercase tracking-[0.28em] text-stone-400">
@@ -572,15 +690,116 @@ export function WorkspacePanel() {
           </div>
 
           <div className="space-y-4">
+            <form
+              className="rounded-[1.75rem] border border-stone-200 bg-white p-5 shadow-sm"
+              action={(formData) => {
+                startTransition(() => {
+                  void handleUpdateCard(card.id, formData);
+                });
+              }}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.32em] text-stone-500">
+                Card brief
+              </p>
+              <p className="mt-2 text-sm leading-6 text-stone-600">
+                Correct the recipient, occasion, relationship, theme, or back note here. If you
+                change the recipient or occasion, the old AI copy is cleared so the next generation
+                pass is not misleading.
+              </p>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-stone-800">Recipient name</span>
+                  <input
+                    className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                    name="recipientName"
+                    type="text"
+                    defaultValue={card.recipientName ?? ""}
+                    maxLength={80}
+                    required
+                  />
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-stone-800">Occasion</span>
+                  <select
+                    className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                    name="occasion"
+                    defaultValue={card.occasion}
+                  >
+                    {occasionOptions.map((occasion) => (
+                      <option key={occasion.value} value={occasion.value}>
+                        {occasion.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-stone-800">Relationship</span>
+                  <input
+                    className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                    name="relationship"
+                    type="text"
+                    defaultValue={card.relationship ?? ""}
+                    maxLength={80}
+                    placeholder="Boyfriend, partner, sister, best friend"
+                  />
+                </label>
+
+                <label className="block space-y-2">
+                  <span className="text-sm font-medium text-stone-800">Visual direction</span>
+                  <select
+                    className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                    name="theme"
+                    defaultValue={card.theme}
+                  >
+                    {themeOptions.map((theme) => (
+                      <option key={theme.value} value={theme.value}>
+                        {theme.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <label className="mt-3 block space-y-2">
+                <span className="text-sm font-medium text-stone-800">Back note</span>
+                <textarea
+                  className="min-h-24 w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                  name="personalNote"
+                  defaultValue={card.personalizedText ?? ""}
+                  maxLength={800}
+                  placeholder="Write the private note that belongs on the back."
+                />
+              </label>
+
+              <button
+                className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-stone-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-stone-400"
+                type="submit"
+                disabled={savingCardId === card.id}
+              >
+                {savingCardId === card.id ? "Saving brief..." : "Update card brief"}
+              </button>
+            </form>
+
             <div className="rounded-[1.9rem] bg-stone-950 p-5 text-stone-50 shadow-lg">
               <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-200">
                 Share and generate
               </p>
               <h5 className="mt-3 text-2xl font-semibold tracking-tight">{coverLine}</h5>
               <p className="mt-3 text-sm leading-6 text-stone-300">
-                Use the brief, memory sources, and placed photos together. Then regenerate until
-                the card text and visual mood feel right.
+                Use the brief, memory sources, and placed photos together. Until generation runs,
+                the preview and public page will show starter text from the brief instead of
+                finished AI copy.
               </p>
+
+              {!features.openAiConfigured ? (
+                <div className="mt-4 rounded-[1.4rem] border border-amber-200/30 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                  OpenAI is not configured in the app environment yet. Add `OPENAI_API_KEY` in
+                  `.env`, restart `npm run dev`, then generate the card.
+                </div>
+              ) : null}
 
               <button
                 className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:bg-stone-300"
@@ -588,10 +807,12 @@ export function WorkspacePanel() {
                 onClick={() => {
                   void handleGenerateDraft(card.id);
                 }}
-                disabled={cardBusy}
+                disabled={cardBusy || !features.openAiConfigured}
               >
                 {cardBusy
                   ? "Generating..."
+                  : !features.openAiConfigured
+                    ? "Configure OpenAI to generate"
                   : hasGeneratedDraft
                     ? "Regenerate cover + inside"
                     : "Generate cover + inside"}
@@ -636,6 +857,13 @@ export function WorkspacePanel() {
                 Add pictures, GIFs, or short videos, then choose where each one should appear on
                 the card and how lightly it should be styled.
               </p>
+              {!features.cloudinaryConfigured ? (
+                <div className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                  Uploads are disabled because Cloudinary is not configured. Add
+                  `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, and `CLOUDINARY_API_SECRET` in
+                  `.env`, then restart `npm run dev`.
+                </div>
+              ) : null}
               <input
                 className="mt-4 block w-full text-sm text-stone-700 file:mr-4 file:rounded-full file:border-0 file:bg-stone-950 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white"
                 type="file"
@@ -644,7 +872,7 @@ export function WorkspacePanel() {
                   void handleUploadMedia(card.id, event.target.files);
                   event.currentTarget.value = "";
                 }}
-                disabled={uploadingCardId === card.id}
+                disabled={uploadingCardId === card.id || !features.cloudinaryConfigured}
               />
             </div>
 
@@ -655,12 +883,19 @@ export function WorkspacePanel() {
                     AI memory box
                   </p>
                   <p className="mt-2 text-sm leading-6 text-stone-600">
-                    Notes, PDFs, links, and Instagram references give the AI better material for
-                    the cover and inside message. Your back note stays untouched.
+                    Notes, PDFs, links, Instagram references, and Facebook links give the AI
+                    better material for the cover and inside message. Your back note stays
+                    untouched.
                   </p>
+                  {!features.openAiConfigured ? (
+                    <div className="mt-4 rounded-[1.4rem] border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                      Sources can still be saved, but AI generation and PDF ingestion will not work
+                      until `OPENAI_API_KEY` is set and the dev server is restarted.
+                    </div>
+                  ) : null}
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 rounded-[1.5rem] bg-stone-100 p-1 md:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2 rounded-[1.5rem] bg-stone-100 p-1 md:grid-cols-5">
                   {sourceKinds.map((kind) => (
                     <button
                       key={kind.value}
@@ -699,7 +934,9 @@ export function WorkspacePanel() {
                   />
                 </label>
 
-                {sourceMode === "link" || sourceMode === "instagram" ? (
+                {sourceMode === "link" ||
+                sourceMode === "instagram" ||
+                sourceMode === "facebook" ? (
                   <label className="block space-y-2">
                     <span className="text-sm font-medium text-stone-800">URL</span>
                     <input
@@ -709,6 +946,8 @@ export function WorkspacePanel() {
                       placeholder={
                         sourceMode === "instagram"
                           ? "https://www.instagram.com/p/..."
+                          : sourceMode === "facebook"
+                            ? "https://www.facebook.com/..."
                           : "https://..."
                       }
                       required
@@ -793,9 +1032,21 @@ export function WorkspacePanel() {
                         {source.kind}
                       </p>
                     </div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
-                      Added {new Date(source.createdAt).toLocaleDateString()}
-                    </p>
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs uppercase tracking-[0.2em] text-stone-400">
+                        Added {new Date(source.createdAt).toLocaleDateString()}
+                      </p>
+                      <button
+                        className="inline-flex items-center justify-center rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-stone-600 transition hover:border-rose-300 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        type="button"
+                        onClick={() => {
+                          void handleDeleteSource(card.id, source.id);
+                        }}
+                        disabled={deletingSourceId === source.id}
+                      >
+                        {deletingSourceId === source.id ? "Deleting..." : "Delete"}
+                      </button>
+                    </div>
                   </div>
                   {source.url ? <p className="mt-3 break-all">{source.url}</p> : null}
                   {source.textContent ? (
@@ -826,59 +1077,94 @@ export function WorkspacePanel() {
             </div>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {card.media.map((item) => (
-                <div key={item.id} className="space-y-3">
-                  {renderMediaTile(item)}
-                  <form
-                    className="space-y-3 rounded-[1.5rem] border border-stone-200 bg-white p-4"
-                    action={(formData) => {
-                      const placement = String(formData.get("placement") ?? item.placement);
-                      const filterStyle = String(formData.get("filterStyle") ?? item.filterStyle);
-                      startTransition(() => {
-                        void handleUpdateMedia(card.id, item.id, { placement, filterStyle });
-                      });
-                    }}
-                  >
-                    <label className="block space-y-2">
-                      <span className="text-sm font-medium text-stone-800">Placement</span>
-                      <select
-                        className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
-                        name="placement"
-                        defaultValue={item.placement}
-                      >
-                        {mediaPlacementOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+              {card.media.map((item) => {
+                const mediaSelection = mediaSelections[item.id] ?? {
+                  placement: item.placement,
+                  filterStyle: item.filterStyle,
+                };
+                const hasMediaChanges =
+                  mediaSelection.placement !== item.placement ||
+                  mediaSelection.filterStyle !== item.filterStyle;
 
-                    <label className="block space-y-2">
-                      <span className="text-sm font-medium text-stone-800">Light filter</span>
-                      <select
-                        className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
-                        name="filterStyle"
-                        defaultValue={item.filterStyle}
-                      >
-                        {filterStyleOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                return (
+                  <div key={item.id} className="space-y-3">
+                    {renderMediaTile(item)}
+                    <div className="space-y-3 rounded-[1.5rem] border border-stone-200 bg-white p-4">
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-stone-800">Placement</span>
+                        <select
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                          name="placement"
+                          value={mediaSelection.placement}
+                          onChange={(event) =>
+                            handleMediaSelectionChange(item.id, "placement", event.target.value, {
+                              placement: item.placement,
+                              filterStyle: item.filterStyle,
+                            })
+                          }
+                        >
+                          {mediaPlacementOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-                    <button
-                      className="inline-flex w-full items-center justify-center rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-stone-400"
-                      type="submit"
-                      disabled={savingMediaId === item.id}
-                    >
-                      {savingMediaId === item.id ? "Saving..." : "Apply placement + filter"}
-                    </button>
-                  </form>
-                </div>
-              ))}
+                      <label className="block space-y-2">
+                        <span className="text-sm font-medium text-stone-800">Light filter</span>
+                        <select
+                          className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm text-stone-950 outline-none transition focus:border-rose-400 focus:ring-4 focus:ring-rose-100"
+                          name="filterStyle"
+                          value={mediaSelection.filterStyle}
+                          onChange={(event) =>
+                            handleMediaSelectionChange(item.id, "filterStyle", event.target.value, {
+                              placement: item.placement,
+                              filterStyle: item.filterStyle,
+                            })
+                          }
+                        >
+                          {filterStyleOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <button
+                        className="inline-flex w-full items-center justify-center rounded-full bg-stone-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-stone-300 disabled:text-stone-100"
+                        type="button"
+                        onClick={() => {
+                          startTransition(() => {
+                            void handleUpdateMedia(card.id, item.id, mediaSelection);
+                          });
+                        }}
+                        disabled={savingMediaId === item.id || !hasMediaChanges}
+                      >
+                        {savingMediaId === item.id
+                          ? "Saving..."
+                          : hasMediaChanges
+                            ? "Apply placement + filter"
+                            : "Placement + filter saved"}
+                      </button>
+
+                      <button
+                        className="inline-flex w-full items-center justify-center rounded-full border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:border-stone-200 disabled:text-stone-400"
+                        type="button"
+                        onClick={() => {
+                          startTransition(() => {
+                            void handleDeleteMedia(card.id, item.id);
+                          });
+                        }}
+                        disabled={deletingMediaId === item.id}
+                      >
+                        {deletingMediaId === item.id ? "Deleting..." : "Delete media"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : null}
