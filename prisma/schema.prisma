@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String @id @default(cuid())
+  email        String @unique
+  passwordHash String
+  cards        Card[]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Card {
+  id               String  @id @default(cuid())
+  slug             String  @unique @default(cuid())
+  title            String?
+  personalizedText String?
+  recipientName    String?
+  occasion         String  @default("birthday")
+  relationship     String?
+  insideMessage    String?
+  theme            String  @default("default")
+  user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId           String
+  media            Media[]
+  sources          MemorySource[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Media {
+  id               String  @id @default(cuid())
+  storageProvider  String  @default("cloudinary")
+  publicId         String  @unique
+  originalFilename String?
+  resourceType     String
+  format           String?
+  secureUrl        String
+  bytes            Int?
+  width            Int?
+  height           Int?
+  duration         Float?
+  placement        String  @default("inside-strip")
+  filterStyle      String  @default("auto")
+  order            Int     @default(0)
+  card             Card    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  cardId           String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model MemorySource {
+  id           String  @id @default(cuid())
+  kind         String
+  title        String?
+  textContent  String?
+  url          String?
+  openaiFileId String?
+  filename     String?
+  mimeType     String?
+  card         Card    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  cardId       String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
