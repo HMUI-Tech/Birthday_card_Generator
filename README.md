@@ -1,36 +1,102 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Digital Card App
 
-## Getting Started
+Private AI card studio for building recipient-facing cards with:
 
-First, run the development server:
+- AI-written cover and inside message
+- private back note
+- placed photos, GIFs, and short videos
+- optional uploaded soundtrack
+- public share pages by slug
+- static PDF export view
+
+## Local setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Start PostgreSQL locally, for example with Docker:
+
+```bash
+docker compose up -d
+```
+
+3. Fill `.env` with:
+
+```env
+DATABASE_URL=...
+JWT_SECRET=...
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+OPENAI_API_KEY=...
+```
+
+4. Sync Prisma:
+
+```bash
+npm run db:push
+npx prisma generate
+```
+
+5. Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## How sharing works
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Live recipient card: `/card/<slug>`
+- Static PDF view: `/card/<slug>/pdf`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The live card is the animated version. It can contain motion, playable videos, and an uploaded soundtrack.
 
-## Learn More
+The PDF route is intentionally static. It is meant for browser print / save-as-PDF. Music, animation, and live video playback stay on the web card.
 
-To learn more about Next.js, take a look at the following resources:
+## Music support
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Each card can have one uploaded soundtrack.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Upload route: `POST /api/cards/[cardId]/soundtrack`
+- Remove route: `DELETE /api/cards/[cardId]/soundtrack`
+- Public page tries to start playback, but browsers may block autoplay with sound until the recipient taps play.
 
-## Deploy on Vercel
+Keep soundtrack files short and licensed.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Public deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This repo contains the app inside `digital-card-app`, so when deploying from the repo root:
+
+1. Import the GitHub repo into Vercel
+2. Set the project Root Directory to `digital-card-app`
+3. Provision a hosted PostgreSQL database
+4. Add the environment variables listed above
+5. Run Prisma against the hosted database
+6. Deploy
+
+Once deployed:
+
+- creators use `https://your-domain/`
+- recipients use `https://your-domain/card/<slug>`
+
+Recipients do not need to sign up to open shared card links.
+
+## PDF export
+
+Open:
+
+```text
+/card/<slug>/pdf?autoprint=1
+```
+
+That view opens the static export page and triggers the browser print dialog so the card can be saved as a PDF.
+
+## Verification commands
+
+```bash
+npm run lint
+npm run build
+```

@@ -16,6 +16,7 @@ import {
   occasionOptions,
   themeOptions,
 } from "@/lib/card-design";
+import { buildSoundtrackTitle } from "@/lib/card-soundtrack";
 import {
   filterStyleOptions,
   formatFilterStyleLabel,
@@ -69,6 +70,13 @@ type CardSummary = {
   relationship: string | null;
   insideMessage: string | null;
   theme: string;
+  soundtrackMode: string;
+  soundtrackTitle: string | null;
+  soundtrackUrl: string | null;
+  soundtrackPublicId: string | null;
+  soundtrackOriginalFilename: string | null;
+  soundtrackFormat: string | null;
+  soundtrackDuration: number | null;
   media: CardMedia[];
   sources: CardSource[];
   createdAt: string;
@@ -98,6 +106,18 @@ const sourceHints: Record<SourceKind, string> = {
 function getShareUrl(slug: string) {
   const sharePath = `/card/${slug}`;
   return typeof window === "undefined" ? sharePath : `${window.location.origin}${sharePath}`;
+}
+
+function formatDurationLabel(seconds: number | null) {
+  if (!seconds || !Number.isFinite(seconds)) {
+    return null;
+  }
+
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainderSeconds = totalSeconds % 60;
+
+  return `${minutes}:${String(remainderSeconds).padStart(2, "0")}`;
 }
 
 function renderMediaTile(item: CardMedia, compact = false) {
@@ -164,9 +184,11 @@ export function WorkspacePanel() {
   });
   const [isPending, startTransition] = useTransition();
   const [uploadingCardId, setUploadingCardId] = useState<string | null>(null);
+  const [uploadingSoundtrackCardId, setUploadingSoundtrackCardId] = useState<string | null>(null);
   const [busyCardId, setBusyCardId] = useState<string | null>(null);
   const [savingMediaId, setSavingMediaId] = useState<string | null>(null);
   const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null);
+  const [deletingSoundtrackCardId, setDeletingSoundtrackCardId] = useState<string | null>(null);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
   const [sourceModes, setSourceModes] = useState<Record<string, SourceKind>>({});
@@ -358,6 +380,60 @@ export function WorkspacePanel() {
     }
   }
 
+  async function handleUploadSoundtrack(cardId: string, files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+
+    setUploadingSoundtrackCardId(cardId);
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.set("file", file);
+      const response = await fetch(`/api/cards/${cardId}/soundtrack`, {
+        method: "POST",
+        body: uploadFormData,
+      });
+      const data = (await response.json()) as CardSummary & { message?: string };
+      if (!response.ok) {
+        setNotice({
+          tone: "error",
+          message: data.message ?? "Unable to upload the soundtrack.",
+        });
+        return;
+      }
+      updateCard(data);
+      setNotice({
+        tone: "success",
+        message: `Soundtrack "${file.name}" attached to the public card.`,
+      });
+    } finally {
+      setUploadingSoundtrackCardId(null);
+    }
+  }
+
+  async function handleDeleteSoundtrack(cardId: string) {
+    setDeletingSoundtrackCardId(cardId);
+    try {
+      const response = await fetch(`/api/cards/${cardId}/soundtrack`, {
+        method: "DELETE",
+      });
+      const data = (await response.json()) as { card?: CardSummary; message?: string };
+      if (!response.ok || !data.card) {
+        setNotice({
+          tone: "error",
+          message: data.message ?? "Unable to remove the soundtrack.",
+        });
+        return;
+      }
+      updateCard(data.card);
+      setNotice({
+        tone: "success",
+        message: "Soundtrack removed from the card.",
+      });
+    } finally {
+      setDeletingSoundtrackCardId(null);
+    }
+  }
+
   async function handleUpdateMedia(
     cardId: string,
     mediaId: string,
@@ -543,6 +619,11 @@ export function WorkspacePanel() {
     const hasGeneratedDraft = copyState !== "starter";
     const copyStateLabel = formatCardCopyStateLabel(copyState);
     const copyStateDescription = buildCardCopyStateDescription(copyState);
+    const soundtrackLabel = buildSoundtrackTitle({
+      soundtrackTitle: card.soundtrackTitle,
+      soundtrackOriginalFilename: card.soundtrackOriginalFilename,
+    });
+    const soundtrackDuration = formatDurationLabel(card.soundtrackDuration);
 
     return (
       <article
@@ -841,7 +922,7 @@ export function WorkspacePanel() {
                 />
               </label>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
                 <button
                   className="inline-flex w-full items-center justify-center rounded-full border border-white/18 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
                   type="button"
@@ -859,6 +940,69 @@ export function WorkspacePanel() {
                 >
                   Open public card
                 </a>
+                <a
+                  className="inline-flex w-full items-center justify-center rounded-full border border-white/18 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"
+                  href={`/card/${card.slug}/pdf?autoprint=1`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Save as PDF
+                </a>
+              </div>
+
+              <div className="mt-5 rounded-[1.55rem] border border-white/10 bg-white/10 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">
+                  Soundtrack
+                </p>
+                <p className="mt-2 text-sm leading-6 text-stone-300">
+                  Add a short licensed audio track for the public card. The recipient never needs
+                  to sign in, but their browser may still ask them to tap play before sound starts.
+                </p>
+
+                {card.soundtrackUrl ? (
+                  <div className="mt-4 rounded-[1.2rem] border border-white/10 bg-black/15 px-4 py-3">
+                    <p className="text-sm font-semibold text-white">{soundtrackLabel}</p>
+                    <p className="mt-1 text-xs uppercase tracking-[0.2em] text-stone-300">
+                      {soundtrackDuration
+                        ? `Attached soundtrack • ${soundtrackDuration}`
+                        : "Attached soundtrack"}
+                    </p>
+                    <button
+                      className="mt-3 inline-flex rounded-full border border-white/18 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      type="button"
+                      onClick={() => {
+                        void handleDeleteSoundtrack(card.id);
+                      }}
+                      disabled={deletingSoundtrackCardId === card.id}
+                    >
+                      {deletingSoundtrackCardId === card.id ? "Removing..." : "Remove soundtrack"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {!features.cloudinaryConfigured ? (
+                  <div className="mt-4 rounded-[1.4rem] border border-amber-200/30 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                    Soundtrack uploads are disabled until Cloudinary is configured in `.env`.
+                  </div>
+                ) : null}
+
+                <input
+                  className="mt-4 block w-full text-sm text-stone-200 file:mr-4 file:rounded-full file:border-0 file:bg-white file:px-4 file:py-2 file:text-sm file:font-semibold file:text-stone-950"
+                  type="file"
+                  accept="audio/mpeg,audio/mp3,audio/mp4,audio/aac,audio/x-m4a,audio/ogg,audio/wav,audio/x-wav"
+                  onChange={(event) => {
+                    void handleUploadSoundtrack(card.id, event.target.files);
+                    event.currentTarget.value = "";
+                  }}
+                  disabled={
+                    uploadingSoundtrackCardId === card.id ||
+                    deletingSoundtrackCardId === card.id ||
+                    !features.cloudinaryConfigured
+                  }
+                />
+                <p className="mt-2 text-xs leading-5 text-stone-400">
+                  MP3, M4A, AAC, OGG, and WAV work best. Keep soundtrack files short and licensed.
+                </p>
               </div>
             </div>
 

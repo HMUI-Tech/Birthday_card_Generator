@@ -97,3 +97,30 @@ input {
     animation: none;
   }
 }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #ffffff;
+  }
+
+  .print-hidden {
+    display: none !important;
+  }
+
+  .public-card-frame {
+    box-shadow: none !important;
+  }
+
+  .card-motion-gentle-zoom,
+  .card-motion-drift,
+  .card-motion-float {
+    animation: none !important;
+    transform: none !important;
+  }
+}

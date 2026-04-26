@@ -21,6 +21,13 @@ export const cardSummarySelect = {
   relationship: true,
   insideMessage: true,
   theme: true,
+  soundtrackMode: true,
+  soundtrackTitle: true,
+  soundtrackUrl: true,
+  soundtrackPublicId: true,
+  soundtrackOriginalFilename: true,
+  soundtrackFormat: true,
+  soundtrackDuration: true,
   media: {
     orderBy: {
       order: "asc",

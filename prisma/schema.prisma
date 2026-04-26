@@ -25,6 +25,13 @@ model Card {
   relationship     String?
   insideMessage    String?
   theme            String  @default("default")
+  soundtrackMode   String  @default("none")
+  soundtrackTitle  String?
+  soundtrackUrl    String?
+  soundtrackPublicId String?
+  soundtrackOriginalFilename String?
+  soundtrackFormat String?
+  soundtrackDuration Float?
   user             User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId           String
   media            Media[]
